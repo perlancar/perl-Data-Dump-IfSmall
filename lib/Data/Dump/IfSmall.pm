@@ -1,5 +1,5 @@
 ## no critic: Modules::ProhibitAutomaticExportation
-package Data::Dump::SkipObjects;
+package Data::Dump::IfSmall;
 
 use strict 'vars', 'subs';
 use Exporter qw(import);
@@ -13,26 +13,19 @@ our @EXPORT = qw(dd ddx);
 our @EXPORT_OK = qw(dump pp dumpf quote);
 
 use overload ();
-use vars qw(%seen %refcnt @dump @fixup %require $CLASS_PATTERN $DEBUG $SHOW_FIXUPS $TRY_BASE64 @FILTERS $INDENT $SORT_KEYS $REMOVE_PRAGMAS);
+use vars qw(%seen %refcnt @dump @fixup %require $MAX_SIZE $DEBUG $SHOW_FIXUPS $TRY_BASE64 @FILTERS $INDENT $SORT_KEYS $REMOVE_PRAGMAS);
 
-our $CLASS_PATTERN;
-$CLASS_PATTERN ||= qr/$ENV{PERL_DATA_DUMP_SKIPOBJECTS_CLASS_PATTERN}/ if defined $ENV{PERL_DATA_DUMP_SKIPOBJECTS_CLASS_PATTERN};
-$CLASS_PATTERN ||= qr//;
+our $MAX_SIZE = $ENV{PERL_DATA_DUMP_IFSMALL_MAX_SIZE} || 1024;
 
 $DEBUG = 0;
 
-$SHOW_FIXUPS = 0;
+$SHOW_FIXUPS = 1;
 $TRY_BASE64 = 50 unless defined $TRY_BASE64;
 $INDENT = "  " unless defined $INDENT;
 
 $SORT_KEYS = undef;
 
 $REMOVE_PRAGMAS = 0;
-
-sub _obj_as_default_string {
-    require Scalar::Util;
-    sprintf("%s=(%0x)", ref($_[0]), Scalar::Util::refaddr($_[0]));
-}
 
 sub dump
 {
@@ -87,6 +80,10 @@ sub dump
 	$out .= ";\n";
 	$out =~ s/^/$INDENT/gm;
 	$out = "do {\n$out}";
+    }
+
+    if (length($out) > $MAX_SIZE && ((@_ == 1 && ref($_[0])) || (@_ > 1))) {
+        $out = @_ == 1 ? "'LARGE:$_[0]'" : "'LARGE:" . \@_ . "'";
     }
 
     print STDERR "$out\n" unless defined wantarray;
@@ -399,11 +396,7 @@ sub _dump
     }
 
     if ($class && $ref) {
-        if ($class =~ $CLASS_PATTERN) {
-            $out = _dump(_obj_as_default_string($rval));
-        } else {
-            $out = "bless($out, " . quote($class) . ")";
-        }
+        $out = "bless($out, " . quote($class) . ")";
     }
     if ($comment) {
 	$comment =~ s/^/# /gm;
@@ -612,7 +605,7 @@ sub quote {
 }
 
 1;
-# ABSTRACT: Like Data::Dump but objects of some patterns are dumped tersely
+# ABSTRACT: Like Data::Dump but reference with dump larger than a certain size will be dumped as something like 'LARGE:ARRAY(0x5636145ea5e8)'
 
 =for Pod::Coverage ^(.+)$
 
@@ -620,12 +613,19 @@ sub quote {
 
 Use like you would use L<Data::Dump>:
 
- use Data::Dump::SkipObjects;
- $Data::Dump::SkipObjects::CLASS_PATTERN = qr/^Dist::Zilla::/;
- dd $dzil;
+ use Data::Dump::IfSmall;
+ $Data::Dump::IfSmall::MAX_SIZE = 2048; # default is 1024
+ dd $data;
 
 
 =head1 DESCRIPTION
+
+
+=head1 ENVIRONMENT
+
+=head2 PERL_DATA_DUMP_IFSMALL_MAX_SIZE
+
+Integer. Set default value for C<$MAX_SIZE>.
 
 
 =head1 SEE ALSO
